@@ -8,3 +8,6 @@ demo
 /.tracecompass
 build/
 bin/
+*.dat
+*.data
+*.log

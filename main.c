@@ -16,8 +16,8 @@
 #define FFT_LEN 4096
 #define FFT_ROUND 100
 
-#define WATER_FULL_W 480
-#define WATER_FULL_H 100
+#define WATER_FALL_W 480
+#define WATER_FALL_H 100
 
 char data_buf[FFT_LEN*FFT_ROUND*2];
 
@@ -75,8 +75,8 @@ uint8_t disp_map[480*100*4];
 
 lv_img_dsc_t fft_waterfall_dsc = {
   .header.always_zero = 0,
-  .header.w = WATER_FULL_W,
-  .header.h = WATER_FULL_H,
+  .header.w = WATER_FALL_W,
+  .header.h = WATER_FALL_H,
   .data_size = 48000 * LV_COLOR_SIZE / 8,
   .header.cf = LV_IMG_CF_TRUE_COLOR,
   .data = disp_map,
@@ -933,7 +933,6 @@ static void *demod_thread_fn(void *arg)
 
 #define PR_FFT_LEN (4096*20)
 #define FFT_BUFFER_GPR_NUM 100
-#define FFT_SIZE 4096
 #define WATER_FALL_W 480
 #define WATER_FALL_H 100
 static void *iq_fft_thread_fn(void *arg)
@@ -950,6 +949,7 @@ static void *iq_fft_thread_fn(void *arg)
     float temp;
     int base_idx = 0;
     static unsigned int water_fall_map[WATER_FALL_W*WATER_FALL_H];
+	static unsigned int (*ptmap)[WATER_FALL_W] = water_fall_map;
 	float min,max;
 	static lv_coord_t ecg_sample[FFT_LEN];
     
@@ -977,18 +977,13 @@ static void *iq_fft_thread_fn(void *arg)
             p = fftw_plan_dft_1d(FFT_LEN, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
             fftw_execute(p); /* repeat as needed */
             
-            //update fft buffer
-            //for(j = 0;j < FFT_BUFFER_GPR_NUM -1 ; j++){
-            //    memcpy(fft_res_map[FFT_BUFFER_GPR_NUM -2 -j],fft_res_map[FFT_BUFFER_GPR_NUM -1 -j], 4096*sizeof(float));
-            //}
-            
             for(j = 0;j < FFT_LEN;j ++){
                 temp = out[j][0]*out[j][0] + out[j][1]*out[j][1];
                 temp = sqrt(temp);
                 fft_res_map[j] = 20*log10(temp);
             }
 	    
-	    printf("fft_res_map[%d] data %0.2f %0.2f %0.2f\n",i,fft_res_map[0],fft_res_map[1],fft_res_map[2]);
+		    // printf("fft_res_map[%d] data %0.2f %0.2f %0.2f\n",i,fft_res_map[0],fft_res_map[1],fft_res_map[2]);
             /******************waterfall & plot wave ***********************/
             max = 0;
 			min = 9999999;
@@ -1022,14 +1017,17 @@ static void *iq_fft_thread_fn(void *arg)
 			fclose(fp);
 #endif
 			draw_wave(ecg_sample,50,80);
-			
-			memcpy(&water_fall_map[0],&water_fall_map[WATER_FALL_W],
-					WATER_FALL_W*(WATER_FALL_H-1)*sizeof(int));
-			for(j = 0;j < WATER_FALL_W;j++){
-		 	    water_fall_map[(WATER_FALL_H-1)*WATER_FALL_W+j] = (unsigned int)ecg_sample[j]|0xFF000000;
+				
+			for(j = 0;j < WATER_FALL_H-1;j++){
+				memcpy(ptmap[WATER_FALL_H-1-j],ptmap[WATER_FALL_H-2-j],WATER_FALL_W*sizeof(int));
 			}
-			fft_waterfall_dsc.data=(uint8_t)water_fall_map;
-			//lv_img_set_src(img1,&fft_waterfall_dsc);
+			
+			for(j = 0;j < WATER_FALL_W;j++){
+		 	    ptmap[0][j] = (unsigned int)ecg_sample[j]|0xFF000000|0x330000;
+			}
+			
+			fft_waterfall_dsc.data=(uint8_t*)water_fall_map;
+			lv_img_set_src(img1,&fft_waterfall_dsc);
 			if(i < update_fft_num-1){
 				usleep(30*1000);
 			}

@@ -73,7 +73,7 @@ static int tick_thread(void *data);
 /*Pixel format: Fix 0xFF: 8 bit, Red: 8 bit, Green: 8 bit, Blue: 8 bit*/
 uint8_t disp_map[480*100*4];
 
-lv_img_dsc_t fft_waterfull_dsc = {
+lv_img_dsc_t fft_waterfall_dsc = {
   .header.always_zero = 0,
   .header.w = WATER_FULL_W,
   .header.h = WATER_FULL_H,
@@ -97,7 +97,7 @@ struct dongle_state
 	uint32_t freq;
 	uint32_t rate;
 	int      gain;
-	uint16_t buf16[MAXIMUM_BUF_LENGTH];
+	int16_t buf16[MAXIMUM_BUF_LENGTH];
 	uint32_t buf_len;
 	int      ppm_error;
 	int      offset_tuning;
@@ -894,7 +894,7 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
     memcpy(f->c16buff,s->buf16, 2*len);
     f->data_len = len;
 	pthread_rwlock_unlock(&f->rw);
-	safe_cond_signal(&f->ready, &f->ready_m);    
+	safe_cond_signal(&f->ready, &f->ready_m); 	
 }
 
 static void *dongle_thread_fn(void *arg)
@@ -934,19 +934,22 @@ static void *demod_thread_fn(void *arg)
 #define PR_FFT_LEN (4096*20)
 #define FFT_BUFFER_GPR_NUM 100
 #define FFT_SIZE 4096
+#define WATER_FALL_W 480
+#define WATER_FALL_H 100
 static void *iq_fft_thread_fn(void *arg)
 {
     struct iq_fft_state *f = arg;
     static int data_tot_len_acc = 0;
     int temp_data_len;
     int update_fft_num = 0;
-    float fft_res_map[FFT_BUFFER_GPR_NUM][4096];
+    float fft_res_map[FFT_LEN];
     int i,j,k;
-    int16_t data_buff[3][4096];
+    int16_t data_buff[3][4096*2];
     fftw_complex in[FFT_LEN], out[FFT_LEN];
     fftw_plan p;
     float temp;
     int base_idx = 0;
+    static unsigned int water_fall_map[WATER_FALL_W*WATER_FALL_H];
 	float min,max;
 	static lv_coord_t ecg_sample[FFT_LEN];
     
@@ -957,31 +960,35 @@ static void *iq_fft_thread_fn(void *arg)
         if(update_fft_num > 0){
             for(i = 0; i< update_fft_num; i++){
                 base_idx = i * PR_FFT_LEN;
-                memcpy(data_buff[i],&f->c16buff[i * PR_FFT_LEN],FFT_LEN*sizeof(int16_t));
+                memcpy(data_buff[i],&f->c16buff[i * PR_FFT_LEN*2],FFT_LEN*sizeof(int16_t)*2);
             }
         }
         pthread_rwlock_unlock(&f->rw);
-        
+
+
         for(i = 0; i< update_fft_num; i++){
-            memcpy(data_buff[i],&f->c16buff[i * PR_FFT_LEN],FFT_LEN*sizeof(int16_t));
+            memcpy(data_buff[i],&f->c16buff[i * PR_FFT_LEN*2],FFT_LEN*sizeof(int16_t)*2);
             for(j = 0;j < FFT_LEN;j++){
                 in[j][0] = data_buff[i][j*2];
                 in[j][1] = data_buff[i][j*2 + 1];
             }
+	    
             
             p = fftw_plan_dft_1d(FFT_LEN, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
             fftw_execute(p); /* repeat as needed */
             
             //update fft buffer
-            for(j = 0;j < FFT_BUFFER_GPR_NUM -1 ; j++){
-                memcpy(fft_res_map[FFT_BUFFER_GPR_NUM -2 -j],fft_res_map[FFT_BUFFER_GPR_NUM -1 -j], 4096*sizeof(float));
-            }
+            //for(j = 0;j < FFT_BUFFER_GPR_NUM -1 ; j++){
+            //    memcpy(fft_res_map[FFT_BUFFER_GPR_NUM -2 -j],fft_res_map[FFT_BUFFER_GPR_NUM -1 -j], 4096*sizeof(float));
+            //}
             
             for(j = 0;j < FFT_LEN;j ++){
                 temp = out[j][0]*out[j][0] + out[j][1]*out[j][1];
                 temp = sqrt(temp);
-                fft_res_map[0][j] = 20*log10(temp);
+                fft_res_map[j] = 20*log10(temp);
             }
+	    
+	    printf("fft_res_map[%d] data %0.2f %0.2f %0.2f\n",i,fft_res_map[0],fft_res_map[1],fft_res_map[2]);
             /******************waterfall & plot wave ***********************/
             max = 0;
 			min = 9999999;
@@ -990,22 +997,39 @@ static void *iq_fft_thread_fn(void *arg)
 				double temp = 0;
 				for(k=0;k < 4;k++)
 				{
-					temp +=fft_res_map[0][j*8 + k];
+					temp +=fft_res_map[j*8 + k];
 				}
 				
-				ecg_sample[i] = temp/4;
+				ecg_sample[j] = temp/4;
 
-				if(max < ecg_sample[i])
+				if(max < ecg_sample[j])
 				{
-					max = ecg_sample[i];
+					max = ecg_sample[j];
 				}
-				if(min > ecg_sample[i])
+				if(min > ecg_sample[j])
 				{
-					min = ecg_sample[i];
+					min = ecg_sample[j];
 				}     
 			}
-			printf("[max min] is [%0.2f %0.2f]\n",max,min);
-			draw_wave(ecg_sample,0,60);
+			printf("[max min][%d] is [%0.2f %0.2f]\n",i,max,min);
+#if 1
+			FILE *fp;
+			fp = fopen("dump_ecg_data.dat","w");
+			for(j = 0;j < 480;j ++){
+			    fprintf(fp,"%d ",ecg_sample[j]);
+			}
+			fprintf(fp,"\n");
+			fclose(fp);
+#endif
+			draw_wave(ecg_sample,50,80);
+			
+			memcpy(&water_fall_map[0],&water_fall_map[WATER_FALL_W],
+					WATER_FALL_W*(WATER_FALL_H-1)*sizeof(int));
+			for(j = 0;j < WATER_FALL_W;j++){
+		 	    water_fall_map[(WATER_FALL_H-1)*WATER_FALL_W+j] = (unsigned int)ecg_sample[j]|0xFF000000;
+			}
+			fft_waterfall_dsc.data=(uint8_t)water_fall_map;
+			//lv_img_set_src(img1,&fft_waterfall_dsc);
 			if(i < update_fft_num-1){
 				usleep(30*1000);
 			}

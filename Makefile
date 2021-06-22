@@ -33,6 +33,7 @@ CSRCS += ./rtl_sdr_app_work/lib/tuner_fc0012.c
 CSRCS += ./rtl_sdr_app_work/lib/tuner_fc0013.c
 CSRCS += ./rtl_sdr_app_work/lib/tuner_fc2580.c
 CSRCS += ./rtl_sdr_app_work/lib/tuner_r82xx.c
+CSRCS += ./rtl_sdr_app_work/lib/rtl_sdr_dsp.c
 CSRCS += ./rtl_sdr_app_work/convenience/convenience.c
 
 RTLSDR_SOURCE=$(wildcard ./rtl_sdr_app_work/lib/*.c  ./rtl_sdr_app_work/convenience/*.c)

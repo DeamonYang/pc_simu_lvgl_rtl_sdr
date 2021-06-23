@@ -14,8 +14,8 @@ WARNINGS ?= -Wall -Wextra \
 						-Wempty-body  -Wstack-usage=2048 \
             -Wtype-limits -Wsizeof-pointer-memaccess -Wpointer-arith
             
-CFLAGS ?= -O3 -I$(LVGL_DIR)/ $(WARNINGS) -I ./rtl_sdr_app_work/include/ `pkg-config --cflags wayland-client` `pkg-config --cflags xkbcommon`
-LDFLAGS ?= -lSDL2 -lpthread -lusb-1.0 -lm -lfftw3 `pkg-config --libs wayland-client` `pkg-config --libs xkbcommon` -lpthread
+CFLAGS ?= -O3 -I$(LVGL_DIR)/ $(WARNINGS)  -I ./rtl_sdr_app_work/include/ `pkg-config --cflags wayland-client` `pkg-config --cflags xkbcommon`
+LDFLAGS ?= -lSDL2 -lpthread -lusb-1.0 -lm -ldl -lfftw3 `pkg-config --libs wayland-client` `pkg-config --libs xkbcommon` -lpthread
 BIN = demo
 
 
@@ -25,6 +25,18 @@ MAINSRC = ./main.c
 include $(LVGL_DIR)/lvgl/lvgl.mk
 include $(LVGL_DIR)/lv_drivers/lv_drivers.mk
 include $(LVGL_DIR)/lv_demos/lv_demo.mk
+#include $(LVGL_DIR)/tinyalsa/tinyalsa_lib.mk
+
+CFLAGS += "-I$(LVGL_DIR)/tinyalsa/src"
+CFLAGS += "-I$(LVGL_DIR)/tinyalsa/include"
+CSRCS += ./tinyalsa/src/mixer_hw.c
+CSRCS += ./tinyalsa/src/mixer_plugin.c
+CSRCS += ./tinyalsa/src/pcm_hw.c
+CSRCS += ./tinyalsa/src/pcm_plugin.c
+CSRCS += ./tinyalsa/src/limits.c
+CSRCS += ./tinyalsa/src/pcm.c
+CSRCS += ./tinyalsa/src/snd_card_plugin.c
+CSRCS += ./tinyalsa/src/mixer.c
 
 CSRCS +=$(LVGL_DIR)/mouse_cursor_icon.c
 CSRCS += ./rtl_sdr_app_work/lib/librtlsdr.c

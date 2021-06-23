@@ -12,6 +12,7 @@
 #include "lv_drivers/indev/keyboard.h"
 #include "lv_drivers/indev/mousewheel.h"
 #include "rtl_sdr_app_work/include/rtl_sdr_dsp.h"
+#include "tinyalsa/include/tinyalsa/asoundlib.h" 
 
 #include<fftw3.h>
 #include <errno.h>
@@ -25,7 +26,24 @@
 #include <pthread.h>
 #include <libusb-1.0/libusb.h>
 
+struct pcm *pcm;
 
+
+
+#define PCM_PERIOD_SIZE 1024
+#define PCM_PERIOD_COUNT 2
+
+struct pcm_config  tiny_pcm_config = {
+    .channels = 2,
+    .format = PCM_FORMAT_S32_LE,
+    .rate = 24000,
+    .period_size = PCM_PERIOD_SIZE,
+    .period_count = PCM_PERIOD_COUNT,
+    .silence_threshold = PCM_PERIOD_SIZE*PCM_PERIOD_COUNT,
+    .silence_size = 0,
+    .stop_threshold = PCM_PERIOD_SIZE*PCM_PERIOD_COUNT,
+    .start_threshold = PCM_PERIOD_SIZE
+};
 
 static volatile int do_exit = 0;
 static int lcm_post[17] = {1,1,1,3,1,5,3,7,1,9,5,11,3,13,7,15,1};
@@ -57,6 +75,24 @@ struct demod_state demod;
 struct output_state output;
 struct controller_state controller;
 struct iq_fft_state iq_fft;
+
+
+
+void pcm_player_init(struct pcm *pcm,struct pcm_config *config){
+    pcm = pcm_open(0,0,PCM_OUT,config);
+    if(!pcm_is_ready(pcm)){
+        printf("failed to open pcm device\n");
+        pcm_close(pcm);
+    }
+}
+
+void pcm_play_load_buffer(struct pcm *pcm,void * data_buffer,int data_len){
+    int write_frames = pcm_writei(pcm,data_buffer,pcm_bytes_to_frames(pcm,data_len));
+    if(write_frames < 0){
+        printf("error playing sample");
+    } 
+}
+
 
 static void event_handler(lv_event_t * e)
 {
@@ -310,8 +346,8 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 	int i;
 	struct dongle_state *s = ctx;
 	struct demod_state *d = s->demod_target;
-    struct iq_fft_state *f = s->iq_fft_target;
-
+	struct iq_fft_state *f = s->iq_fft_target;
+	int16_t buffer_temp[MAXIMUM_BUF_LENGTH];
 	if (do_exit) {
 		return;}
 	if (!ctx) {
@@ -324,7 +360,9 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 	if (!s->offset_tuning) {
 		rotate_90(buf, len);}
 	for (i=0; i<(int)len; i++) {
-		s->buf16[i] = (int16_t)buf[i] - 127;}
+		buffer_temp[i] = (int16_t)buf[i]-127;
+        s->buf16[i] = buffer_temp[i];
+	}
 	pthread_rwlock_wrlock(&d->rw);
 	memcpy(d->lowpassed, s->buf16, 2*len);
 	d->lp_len = len;
@@ -333,10 +371,10 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
     
     /*copy data to fft buffer*/
     pthread_rwlock_wrlock(&f->rw);
-    memcpy(f->c16buff,s->buf16, 2*len);
+    memcpy(f->c16buff,buffer_temp, 2*len);
     f->data_len = len;
 	pthread_rwlock_unlock(&f->rw);
-	safe_cond_signal(&f->ready, &f->ready_m); 	
+	safe_cond_signal(&f->ready, &f->ready_m);	
 }
 
 static void *dongle_thread_fn(void *arg)
@@ -462,7 +500,7 @@ static void *iq_fft_thread_fn(void *arg)
 			}
 			
 			for(j = 0;j < WATER_FALL_W;j++){
-		 	    ptmap[0][j] = (unsigned int)ecg_sample[j]|0xFF000000|0x330000;
+			    ptmap[0][j] = (unsigned int)ecg_sample[j]|0xFF000000|0x330000;
 			}
 			
 			fft_waterfall_dsc.data=(uint8_t*)water_fall_map;
@@ -717,11 +755,11 @@ int main(int argc, char **argv)
 	output_init(&output);
 	controller_init(&controller);
     iq_fft_init(&iq_fft);
+    pcm_player_init(pcm,&tiny_pcm_config);
 	
 	
     lv_init();
     hal_init();
-    //load_hex_file("FMcapture1.dat",data_buf,FFT_LEN*FFT_ROUND*2,127);
     draw_init();
     //timer_waterfull = lv_timer_create(draw_fft_waterfull,100,0); //period_ms, user_data
 
@@ -1038,8 +1076,8 @@ static int tick_thread(void *data) {
     (void)data;
 
     while(1) { 
-        SDL_Delay(5);
-        lv_tick_inc(5); /*Tell LittelvGL that 5 milliseconds were elapsed*/
+        SDL_Delay(20);
+        lv_tick_inc(20); /*Tell LittelvGL that 5 milliseconds were elapsed*/
     }
 
     return 0;

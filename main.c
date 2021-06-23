@@ -147,7 +147,7 @@ void draw_init()
         lv_roller_set_visible_row_count(rollerlist[i], 1);
         lv_obj_add_event_cb(rollerlist[i], event_handler, LV_EVENT_ALL, NULL);
         lv_roller_set_selected(rollerlist[i], i + 1 , LV_ANIM_OFF);  
-    }
+    } 
  
     lv_obj_t * label2 = lv_label_create(lv_scr_act());
     lv_obj_set_pos (label2,  25*7, 10);

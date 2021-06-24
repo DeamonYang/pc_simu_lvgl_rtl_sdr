@@ -116,7 +116,7 @@ void draw_init()
     lv_obj_set_size(chart, 480, 100);
     lv_obj_set_pos(chart,0,72);    
         /*Do not display points on the data*/
-    lv_obj_set_style_size(chart, 0, LV_PART_INDICATOR);
+    //lv_obj_set_style_size(chart, 0, LV_PART_INDICATOR);
 
 
     //lv_obj_add_event_cb(chart, draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
@@ -162,7 +162,7 @@ void draw_init()
 void draw_wave(lv_coord_t *ecg_sample,int max,int min)
 {
 
-    lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, min, max);
+    //lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, min, max);
     
     //lv_obj_add_event_cb(chart, draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
     //lv_chart_set_update_mode(chart, LV_CHART_UPDATE_MODE_CIRCULAR);
@@ -347,7 +347,7 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 	struct dongle_state *s = ctx;
 	struct demod_state *d = s->demod_target;
 	struct iq_fft_state *f = s->iq_fft_target;
-	int16_t buffer_temp[MAXIMUM_BUF_LENGTH];
+	uint16_t buffer_temp[MAXIMUM_BUF_LENGTH];
 	if (do_exit) {
 		return;}
 	if (!ctx) {
@@ -361,14 +361,13 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 		rotate_90(buf, len);}
 	for (i=0; i<(int)len; i++) {
 		buffer_temp[i] = (int16_t)buf[i]-127;
-        s->buf16[i] = buffer_temp[i];
+        s->buf16[i] = (int16_t)buf[i]-127;//buffer_temp[i];
 	}
 	pthread_rwlock_wrlock(&d->rw);
 	memcpy(d->lowpassed, s->buf16, 2*len);
 	d->lp_len = len;
 	pthread_rwlock_unlock(&d->rw);
 	safe_cond_signal(&d->ready, &d->ready_m);
-    
     /*copy data to fft buffer*/
     pthread_rwlock_wrlock(&f->rw);
     memcpy(f->c16buff,buffer_temp, 2*len);
@@ -434,6 +433,7 @@ static void *iq_fft_thread_fn(void *arg)
         safe_cond_wait(&f->ready, &f->ready_m);
         pthread_rwlock_wrlock(&f->rw);
         update_fft_num = f->data_len/PR_FFT_LEN;
+	update_fft_num = 1;
         if(update_fft_num > 0){
             for(i = 0; i< update_fft_num; i++){
                 base_idx = i * PR_FFT_LEN;
@@ -444,7 +444,7 @@ static void *iq_fft_thread_fn(void *arg)
 
 
         for(i = 0; i< update_fft_num; i++){
-            memcpy(data_buff[i],&f->c16buff[i * PR_FFT_LEN*2],FFT_LEN*sizeof(int16_t)*2);
+            //memcpy(data_buff[i],&f->c16buff[i * PR_FFT_LEN*2],FFT_LEN*sizeof(int16_t)*2);
             for(j = 0;j < FFT_LEN;j++){
                 in[j][0] = data_buff[i][j*2];
                 in[j][1] = data_buff[i][j*2 + 1];
@@ -483,8 +483,8 @@ static void *iq_fft_thread_fn(void *arg)
 					min = ecg_sample[j];
 				}     
 			}
+#if 0
 			printf("[max min][%d] is [%0.2f %0.2f]\n",i,max,min);
-#if 1
 			FILE *fp;
 			fp = fopen("dump_ecg_data.dat","w");
 			for(j = 0;j < 480;j ++){
@@ -506,7 +506,8 @@ static void *iq_fft_thread_fn(void *arg)
 			fft_waterfall_dsc.data=(uint8_t*)water_fall_map;
 			lv_img_set_src(img1,&fft_waterfall_dsc);
 			if(i < update_fft_num-1){
-				usleep(30*1000);
+				;
+				//usleep(10*1000);
 			}
 		}
     }
@@ -742,6 +743,8 @@ void sanity_checks(void)
 
 }
 
+
+
 int main(int argc, char **argv)
 {
 	struct sigaction sigact;
@@ -863,7 +866,7 @@ int main(int argc, char **argv)
 			break;
 		case 'h':
 		default:
-			usage();
+			usage(); 
 			break;
 		}
 	}
@@ -946,9 +949,9 @@ int main(int argc, char **argv)
 	pthread_create(&controller.thread, NULL, controller_thread_fn, (void *)(&controller));
 	usleep(100000);
 	pthread_create(&output.thread, NULL, output_thread_fn, (void *)(&output));
+    pthread_create(&iq_fft.thread, NULL, iq_fft_thread_fn, (void *)(&iq_fft));
 	pthread_create(&demod.thread, NULL, demod_thread_fn, (void *)(&demod));
 	pthread_create(&dongle.thread, NULL, dongle_thread_fn, (void *)(&dongle));
-    pthread_create(&iq_fft.thread, NULL, iq_fft_thread_fn, (void *)(&iq_fft));
 	
     while (!do_exit) {
 	    lv_timer_handler();
@@ -1076,12 +1079,12 @@ static int tick_thread(void *data) {
     (void)data;
 
     while(1) { 
-        SDL_Delay(20);
-        lv_tick_inc(20); /*Tell LittelvGL that 5 milliseconds were elapsed*/
+        SDL_Delay(30);
+        lv_tick_inc(30); /*Tell LittelvGL that 5 milliseconds were elapsed*/
     }
 
     return 0;
 }
 
 
-// vim: tabstop=8:softtabstop=8:shiftwidth=8:noexpandtab
+// 

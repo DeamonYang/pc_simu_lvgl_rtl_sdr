@@ -41,6 +41,8 @@ double log2(double n)
 }
 #endif
 
+
+
 void rotate_90(unsigned char *buf, uint32_t len)
 /* 90 rotation is 1+0j, 0+1j, -1+0j, 0-1j
    or [0, 1, -3, 2, -4, -5, 7, -6] */
@@ -61,6 +63,7 @@ void rotate_90(unsigned char *buf, uint32_t len)
 		buf[i+7] = tmp;
 	}
 }
+
 
 void low_pass(struct demod_state *d)
 /* simple square window FIR */
@@ -84,6 +87,7 @@ void low_pass(struct demod_state *d)
 	d->lp_len = i2;
 }
 
+
 int low_pass_simple(int16_t *signal2, int len, int step)
 // no wrap around, length must be multiple of step
 {
@@ -99,6 +103,7 @@ int low_pass_simple(int16_t *signal2, int len, int step)
 	signal2[i/step + 1] = signal2[i/step];
 	return len / step;
 }
+
 
 void low_pass_real(struct demod_state *s)
 /* simple square window FIR */
@@ -121,6 +126,7 @@ void low_pass_real(struct demod_state *s)
 	}
 	s->result_len = i2;
 }
+
 
 void fifth_order(int16_t *data, int length, int16_t *hist)
 /* for half of interleaved data */
@@ -153,6 +159,7 @@ void fifth_order(int16_t *data, int length, int16_t *hist)
 	hist[5] = f;
 }
 
+
 void generic_fir(int16_t *data, int length, int *fir, int16_t *hist)
 /* Okay, not at all generic.  Assumes length 9, fix that eventually. */
 {
@@ -181,6 +188,7 @@ void generic_fir(int16_t *data, int length, int *fir, int16_t *hist)
 /* define our own complex math ops
    because ARMv5 has no hardware float */
 
+
 void multiply(int ar, int aj, int br, int bj, int *cr, int *cj)
 {
 	*cr = ar*br - aj*bj;
@@ -195,6 +203,7 @@ int polar_discriminant(int ar, int aj, int br, int bj)
 	angle = atan2((double)cj, (double)cr);
 	return (int)(angle / 3.14159 * (1<<14));
 }
+
 
 int fast_atan2(int y, int x)
 /* pre scaled for int16 */

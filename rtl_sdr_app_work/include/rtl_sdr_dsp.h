@@ -142,7 +142,7 @@ int rms(int16_t *samples, int len, int step);
 void arbitrary_upsample(int16_t *buf1, int16_t *buf2, int len1, int len2);
 void arbitrary_downsample(int16_t *buf1, int16_t *buf2, int len1, int len2);
 void arbitrary_resample(int16_t *buf1, int16_t *buf2, int len1, int len2);
-//void usage(void);
+void usage(void);
 
 
 

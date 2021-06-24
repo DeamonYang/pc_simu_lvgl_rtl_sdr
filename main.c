@@ -11,39 +11,24 @@
 #include "lv_drivers/indev/mouse.h"
 #include "lv_drivers/indev/keyboard.h"
 #include "lv_drivers/indev/mousewheel.h"
-#include "rtl_sdr_app_work/include/rtl_sdr_dsp.h"
-#include "tinyalsa/include/tinyalsa/asoundlib.h" 
 
-#include<fftw3.h>
 #include <errno.h>
 #include <signal.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <unistd.h>
 #include <fftw3.h>
 #include <math.h>
 #include <pthread.h>
 #include <libusb-1.0/libusb.h>
 
-struct pcm *pcm;
 
 
+#include "rtl_sdr_app_work/include/rtl_sdr_dsp.h"
 
-#define PCM_PERIOD_SIZE 1024
-#define PCM_PERIOD_COUNT 2
 
-struct pcm_config  tiny_pcm_config = {
-    .channels = 2,
-    .format = PCM_FORMAT_S32_LE,
-    .rate = 24000,
-    .period_size = PCM_PERIOD_SIZE,
-    .period_count = PCM_PERIOD_COUNT,
-    .silence_threshold = PCM_PERIOD_SIZE*PCM_PERIOD_COUNT,
-    .silence_size = 0,
-    .stop_threshold = PCM_PERIOD_SIZE*PCM_PERIOD_COUNT,
-    .start_threshold = PCM_PERIOD_SIZE
-};
 
 static volatile int do_exit = 0;
 static int lcm_post[17] = {1,1,1,3,1,5,3,7,1,9,5,11,3,13,7,15,1};
@@ -54,7 +39,7 @@ static int ACTUAL_BUF_LENGTH;
 static void hal_init(void);
 static int tick_thread(void *data);
 /*Pixel format: Fix 0xFF: 8 bit, Red: 8 bit, Green: 8 bit, Blue: 8 bit*/
-//uint8_t disp_map[480*100*4];
+uint8_t disp_map[480*100*4];
 
 lv_img_dsc_t fft_waterfall_dsc = {
   .header.always_zero = 0,
@@ -62,12 +47,14 @@ lv_img_dsc_t fft_waterfall_dsc = {
   .header.h = WATER_FALL_H,
   .data_size = 48000 * LV_COLOR_SIZE / 8,
   .header.cf = LV_IMG_CF_TRUE_COLOR,
-  //.data = disp_map,
+  .data = disp_map,
 };
 lv_obj_t * img1 ;
 
 static lv_obj_t * chart;
 lv_chart_series_t * ser; 
+
+
 
 // multiple of these, eventually
 struct dongle_state dongle;
@@ -75,24 +62,6 @@ struct demod_state demod;
 struct output_state output;
 struct controller_state controller;
 struct iq_fft_state iq_fft;
-
-
-
-void pcm_player_init(struct pcm *pcm,struct pcm_config *config){
-    pcm = pcm_open(0,0,PCM_OUT,config);
-    if(!pcm_is_ready(pcm)){
-        printf("failed to open pcm device\n");
-        pcm_close(pcm);
-    }
-}
-
-void pcm_play_load_buffer(struct pcm *pcm,void * data_buffer,int data_len){
-    int write_frames = pcm_writei(pcm,data_buffer,pcm_bytes_to_frames(pcm,data_len));
-    if(write_frames < 0){
-        printf("error playing sample");
-    } 
-}
-
 
 static void event_handler(lv_event_t * e)
 {
@@ -112,13 +81,13 @@ void draw_init()
     lv_obj_set_size(img1,480, 100);    
     
     chart = lv_chart_create(lv_scr_act());
-    lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
+    //lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
     lv_obj_set_size(chart, 480, 100);
     lv_obj_set_pos(chart,0,72);    
         /*Do not display points on the data*/
     //lv_obj_set_style_size(chart, 0, LV_PART_INDICATOR);
-
-
+    //lv_obj_set_align(chart,LV_ALIGN_BOTTOM_LEFT);
+    //lv_obj_align(chart,LV_ALIGN_CENTER,0,-10);
     //lv_obj_add_event_cb(chart, draw_event_cb, LV_EVENT_DRAW_PART_BEGIN, NULL);
     //lv_chart_set_update_mode(chart, LV_CHART_UPDATE_MODE_CIRCULAR);
     lv_chart_set_point_count(chart, 480);
@@ -147,7 +116,7 @@ void draw_init()
         lv_roller_set_visible_row_count(rollerlist[i], 1);
         lv_obj_add_event_cb(rollerlist[i], event_handler, LV_EVENT_ALL, NULL);
         lv_roller_set_selected(rollerlist[i], i + 1 , LV_ANIM_OFF);  
-    } 
+    }
  
     lv_obj_t * label2 = lv_label_create(lv_scr_act());
     lv_obj_set_pos (label2,  25*7, 10);
@@ -177,6 +146,9 @@ static void sighandler(int signum)
 	do_exit = 1;
 	rtlsdr_cancel_async(dongle.dev);
 }
+
+
+
 
 
 void fm_demod(struct demod_state *fm)
@@ -291,6 +263,7 @@ void dc_block_filter(struct demod_state *fm)
 }
 
 
+
 void full_demod(struct demod_state *d)
 {
 	int i, ds_p;
@@ -346,8 +319,9 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 	int i;
 	struct dongle_state *s = ctx;
 	struct demod_state *d = s->demod_target;
-	struct iq_fft_state *f = s->iq_fft_target;
-	uint16_t buffer_temp[MAXIMUM_BUF_LENGTH];
+    struct iq_fft_state *f = s->iq_fft_target;
+	uint16_t temp_buffer[MAXIMUM_BUF_LENGTH];
+
 	if (do_exit) {
 		return;}
 	if (!ctx) {
@@ -360,20 +334,23 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 	if (!s->offset_tuning) {
 		rotate_90(buf, len);}
 	for (i=0; i<(int)len; i++) {
-		buffer_temp[i] = (int16_t)buf[i]-127;
-        s->buf16[i] = (int16_t)buf[i]-127;//buffer_temp[i];
+		temp_buffer[i] =(int16_t)buf[i] - 127; 
+		s->buf16[i] = temp_buffer[i]; 
 	}
 	pthread_rwlock_wrlock(&d->rw);
 	memcpy(d->lowpassed, s->buf16, 2*len);
 	d->lp_len = len;
 	pthread_rwlock_unlock(&d->rw);
 	safe_cond_signal(&d->ready, &d->ready_m);
+    
     /*copy data to fft buffer*/
+//	printf("wait for rdlock_iq_fft\n");
     pthread_rwlock_wrlock(&f->rw);
-    memcpy(f->c16buff,buffer_temp, 2*len);
+    memcpy(f->c16buff,temp_buffer, 2*len);
     f->data_len = len;
-	pthread_rwlock_unlock(&f->rw);
-	safe_cond_signal(&f->ready, &f->ready_m);	
+    pthread_rwlock_unlock(&f->rw);
+    safe_cond_signal(&f->ready, &f->ready_m); 	
+//	printf("wait for rdlock_iq_fft pass\n");
 }
 
 static void *dongle_thread_fn(void *arg)
@@ -408,7 +385,6 @@ static void *demod_thread_fn(void *arg)
 	}
 	return 0;
 }
-
 
 
 static void *iq_fft_thread_fn(void *arg)
@@ -483,8 +459,8 @@ static void *iq_fft_thread_fn(void *arg)
 					min = ecg_sample[j];
 				}     
 			}
+//			printf("[max min][%d] is [%0.2f %0.2f]\n",i,max,min);
 #if 0
-			printf("[max min][%d] is [%0.2f %0.2f]\n",i,max,min);
 			FILE *fp;
 			fp = fopen("dump_ecg_data.dat","w");
 			for(j = 0;j < 480;j ++){
@@ -493,14 +469,14 @@ static void *iq_fft_thread_fn(void *arg)
 			fprintf(fp,"\n");
 			fclose(fp);
 #endif
-			draw_wave(ecg_sample,50,80);
+			draw_wave(ecg_sample,40,100);
 				
 			for(j = 0;j < WATER_FALL_H-1;j++){
 				memcpy(ptmap[WATER_FALL_H-1-j],ptmap[WATER_FALL_H-2-j],WATER_FALL_W*sizeof(int));
 			}
 			
 			for(j = 0;j < WATER_FALL_W;j++){
-			    ptmap[0][j] = (unsigned int)ecg_sample[j]|0xFF000000|0x330000;
+		 	    ptmap[0][j] = (unsigned int)ecg_sample[j]<<2 |0xFF000000|0x330000;
 			}
 			
 			fft_waterfall_dsc.data=(uint8_t*)water_fall_map;
@@ -743,10 +719,9 @@ void sanity_checks(void)
 
 }
 
-
-
 int main(int argc, char **argv)
 {
+
 	struct sigaction sigact;
 	int r, opt;
 	int dev_given = 0;
@@ -757,15 +732,15 @@ int main(int argc, char **argv)
 	demod_init(&demod);
 	output_init(&output);
 	controller_init(&controller);
-    iq_fft_init(&iq_fft);
-    pcm_player_init(pcm,&tiny_pcm_config);
-	
-	
-    lv_init();
-    hal_init();
+	iq_fft_init(&iq_fft);
+    	    
+    	    
+    	lv_init();
+	hal_init();
+    /////load_hex_file("FMcapture1.dat",data_buf,FFT_LEN*FFT_ROUND*2,127);
     draw_init();
     //timer_waterfull = lv_timer_create(draw_fft_waterfull,100,0); //period_ms, user_data
-
+	printf("lvgl init ok\n");
 	while ((opt = getopt(argc, argv, "d:f:g:s:b:l:o:t:r:p:E:F:A:M:hT")) != -1) {
 		switch (opt) {
 		case 'd':
@@ -866,7 +841,7 @@ int main(int argc, char **argv)
 			break;
 		case 'h':
 		default:
-			usage(); 
+			usage();
 			break;
 		}
 	}
@@ -949,7 +924,7 @@ int main(int argc, char **argv)
 	pthread_create(&controller.thread, NULL, controller_thread_fn, (void *)(&controller));
 	usleep(100000);
 	pthread_create(&output.thread, NULL, output_thread_fn, (void *)(&output));
-    pthread_create(&iq_fft.thread, NULL, iq_fft_thread_fn, (void *)(&iq_fft));
+        pthread_create(&iq_fft.thread, NULL, iq_fft_thread_fn, (void *)(&iq_fft));
 	pthread_create(&demod.thread, NULL, demod_thread_fn, (void *)(&demod));
 	pthread_create(&dongle.thread, NULL, dongle_thread_fn, (void *)(&dongle));
 	
@@ -1079,12 +1054,12 @@ static int tick_thread(void *data) {
     (void)data;
 
     while(1) { 
-        SDL_Delay(30);
-        lv_tick_inc(30); /*Tell LittelvGL that 5 milliseconds were elapsed*/
+        SDL_Delay(20);
+        lv_tick_inc(20); /*Tell LittelvGL that 5 milliseconds were elapsed*/
     }
 
     return 0;
 }
 
 
-// 
+// vim: tabstop=8:softtabstop=8:shiftwidth=8:noexpandtab

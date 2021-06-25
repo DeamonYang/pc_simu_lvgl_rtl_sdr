@@ -72,6 +72,7 @@ void low_pass(struct demod_state *d)
 	while (i < d->lp_len) {
 		d->now_r += d->lowpassed[i];
 		d->now_j += d->lowpassed[i+1];
+		//fprintf(stderr,"low_pass_in %03d + i*%03d ",d->now_r,d->now_j);
 		i += 2;
 		d->prev_index++;
 		if (d->prev_index < d->downsample) {
@@ -79,6 +80,7 @@ void low_pass(struct demod_state *d)
 		}
 		d->lowpassed[i2]   = d->now_r; // * d->output_scale;
 		d->lowpassed[i2+1] = d->now_j; // * d->output_scale;
+		//fprintf(stderr,"low_pass_out %03d + i*%03d\n",d->now_r,d->now_j);
 		d->prev_index = 0;
 		d->now_r = 0;
 		d->now_j = 0;
@@ -204,13 +206,29 @@ int polar_discriminant(int ar, int aj, int br, int bj)
 	return (int)(angle / 3.14159 * (1<<14));
 }
 
+//int polar_discriminant(int in, int qn, int in1, int qn1)
+//{
+//	int dtemp;
+//	int ddtemp;
+//	double fm_out;
+//	dtemp = in1*qn-in*qn1;
+//	ddtemp = (in*in + qn*qn);
+//	if(ddtemp == 0) {
+//		ddtemp = 1;
+//	}
+//	fm_out = dtemp/ddtemp;
+//	
+//	dtemp  = (int)(fm_out * (1<<18));
+//	return dtemp;
+//
+//}
 
 int fast_atan2(int y, int x)
 /* pre scaled for int16 */
 {
 	int yabs, angle;
 	int pi4=(1<<12), pi34=3*(1<<12);  // note pi = 1<<14
-	if (x==0 && y==0) {
+	if (x==0 && y==0) { 
 		return 0;
 	}
 	yabs = y;
@@ -344,6 +362,16 @@ void arbitrary_upsample(int16_t *buf1, int16_t *buf2, int len1, int len2)
 			tick = len2;
 		}
 	}
+}
+
+void freq_shift_tab_init(float *tab,int tab_len,int16_t freq,int16_t sample_rate)
+{
+	int i;
+	for(i = 0;i < tab_len;i++)
+	{
+		tab[i*2] = cos(2*3.14*freq*i/sample_rate);
+		tab[i*2+1] = -sin(2*3.14*freq*i/sample_rate);
+	} 
 }
 
 void arbitrary_downsample(int16_t *buf1, int16_t *buf2, int len1, int len2)

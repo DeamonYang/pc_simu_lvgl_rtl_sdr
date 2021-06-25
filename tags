@@ -511,6 +511,7 @@ FONT_2	lvgl/tests/lv_test_fonts/font_2.c	10;"	d	file:
 FONT_3	lvgl/tests/lv_test_fonts/font_3.c	10;"	d	file:
 FORMAT_PCM	tinyalsa/utils/tinycap.c	45;"	d	file:
 FREQUENCIES_LIMIT	rtl_sdr_app_work/include/rtl_sdr_dsp.h	18;"	d
+FREQ_TAB_LEN	main.c	737;"	d	file:
 FT5406EE8_FINGER_MAX	lv_drivers/indev/FT5406EE8.c	34;"	d	file:
 FT5406EE8_H	lv_drivers/indev/FT5406EE8.h	7;"	d
 FT5406EE8_I2C_ADR	lv_drv_conf.h	324;"	d
@@ -2706,8 +2707,6 @@ PCM_PARAM_RATE	tinyalsa/include/tinyalsa/pcm.h	/^    PCM_PARAM_RATE,$/;"	e	enum:
 PCM_PARAM_SAMPLE_BITS	tinyalsa/include/tinyalsa/pcm.h	/^    PCM_PARAM_SAMPLE_BITS,$/;"	e	enum:pcm_param
 PCM_PARAM_SUBFORMAT	tinyalsa/include/tinyalsa/pcm.h	/^    PCM_PARAM_SUBFORMAT,$/;"	e	enum:pcm_param
 PCM_PARAM_TICK_TIME	tinyalsa/include/tinyalsa/pcm.h	/^    PCM_PARAM_TICK_TIME,$/;"	e	enum:pcm_param
-PCM_PERIOD_COUNT	main.c	34;"	d	file:
-PCM_PERIOD_SIZE	main.c	33;"	d	file:
 PCM_PLUG_HW_PARAM_SELECT_MAX	tinyalsa/src/pcm_plugin.c	/^    PCM_PLUG_HW_PARAM_SELECT_MAX,$/;"	e	enum:__anon206	file:
 PCM_PLUG_HW_PARAM_SELECT_MIN	tinyalsa/src/pcm_plugin.c	/^    PCM_PLUG_HW_PARAM_SELECT_MIN,$/;"	e	enum:__anon206	file:
 PCM_PLUG_HW_PARAM_SELECT_VAL	tinyalsa/src/pcm_plugin.c	/^    PCM_PLUG_HW_PARAM_SELECT_VAL,$/;"	e	enum:__anon206	file:
@@ -4241,6 +4240,7 @@ disp_def	lvgl/src/hal/lv_hal_disp.c	/^static lv_disp_t * disp_def;$/;"	v	file:
 disp_drv	lv_demos/src/lv_demo_widgets/lv_demo_widgets.py	/^disp_drv = lv.disp_drv_t()$/;"	v
 disp_flush	lvgl/examples/porting/lv_port_disp_template.c	/^static void disp_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p)$/;"	f	file:
 disp_init	lvgl/examples/porting/lv_port_disp_template.c	/^static void disp_init(void)$/;"	f	file:
+disp_map	main.c	/^uint8_t disp_map[480*100*4];$/;"	v
 disp_refr	lvgl/src/core/lv_refr.c	/^static lv_disp_t * disp_refr; \/*Display being refreshed*\/$/;"	v	file:
 disp_size	lv_demos/src/lv_demo_widgets/lv_demo_widgets.c	/^static disp_size_t disp_size;$/;"	v	file:
 disp_size	lv_demos/src/lv_demo_widgets/lv_demo_widgets.py	/^disp_size = display.get_size_category()$/;"	v
@@ -4725,6 +4725,7 @@ freq	rtl_sdr_app_work/lib/tuner_e4k.c	/^	uint32_t freq;$/;"	m	struct:pll_setting
 freq_len	rtl_sdr_app_work/include/rtl_sdr_dsp.h	/^	int      freq_len;$/;"	m	struct:controller_state
 freq_now	rtl_sdr_app_work/include/rtl_sdr_dsp.h	/^	int      freq_now;$/;"	m	struct:controller_state
 freq_ranges	rtl_sdr_app_work/lib/tuner_r82xx.c	/^static const struct r82xx_freq_range freq_ranges[] = {$/;"	v	typeref:struct:r82xx_freq_range	file:
+freq_shift_tab_init	rtl_sdr_app_work/lib/rtl_sdr_dsp.c	/^void freq_shift_tab_init(float *tab,int tab_len,int16_t freq,int16_t sample_rate)$/;"	f
 freqs	rtl_sdr_app_work/include/rtl_sdr_dsp.h	/^	uint32_t freqs[FREQUENCIES_LIMIT];$/;"	m	struct:controller_state
 frequency_range	main.c	/^void frequency_range(struct controller_state *s, char *arg)$/;"	f
 frozen	lvgl/src/core/lv_group.h	/^    uint8_t frozen : 1;         \/**< 1: can't focus to new object*\/$/;"	m	struct:_lv_group_t
@@ -7823,7 +7824,6 @@ path_cb	lvgl/src/core/lv_obj_style.h	/^    lv_anim_path_cb_t path_cb;$/;"	m	stru
 path_cb	lvgl/src/misc/lv_anim.h	/^    lv_anim_path_cb_t path_cb;         \/**< Describe the path (curve) of animations*\/$/;"	m	struct:_lv_anim_t
 path_xcb	lvgl/src/misc/lv_style.h	/^    lv_anim_path_cb_t path_xcb;     \/**< A path for the animation.*\/$/;"	m	struct:__anon20
 paused	lvgl/src/misc/lv_timer.h	/^    uint32_t paused :1;$/;"	m	struct:_lv_timer_t
-pcm	main.c	/^struct pcm *pcm;$/;"	v	typeref:struct:pcm
 pcm	tinyalsa/src/pcm.c	/^struct pcm {$/;"	s	file:
 pcm	tinyalsa/utils/tinyplay.c	/^    struct pcm *pcm;$/;"	m	struct:ctx	typeref:struct:ctx::pcm	file:
 pcm_areas_copy	tinyalsa/src/pcm.c	/^static int pcm_areas_copy(struct pcm *pcm, unsigned int pcm_offset,$/;"	f	file:
@@ -7891,8 +7891,6 @@ pcm_params_get_mask	tinyalsa/src/pcm.c	/^const struct pcm_mask *pcm_params_get_m
 pcm_params_get_max	tinyalsa/src/pcm.c	/^unsigned int pcm_params_get_max(const struct pcm_params *pcm_params,$/;"	f
 pcm_params_get_min	tinyalsa/src/pcm.c	/^unsigned int pcm_params_get_min(const struct pcm_params *pcm_params,$/;"	f
 pcm_params_to_string	tinyalsa/src/pcm.c	/^int pcm_params_to_string(struct pcm_params *params, char *string, unsigned int size)$/;"	f
-pcm_play_load_buffer	main.c	/^void pcm_play_load_buffer(struct pcm *pcm,void * data_buffer,int data_len){$/;"	f
-pcm_player_init	main.c	/^void pcm_player_init(struct pcm *pcm,struct pcm_config *config){$/;"	f
 pcm_plug_bytes_to_frames	tinyalsa/src/pcm_plugin.c	/^static int pcm_plug_bytes_to_frames(unsigned int size,$/;"	f	file:
 pcm_plug_close	tinyalsa/src/pcm_plugin.c	/^static void pcm_plug_close(void *data)$/;"	f	file:
 pcm_plug_data	tinyalsa/src/pcm_plugin.c	/^struct pcm_plug_data {$/;"	s	file:
@@ -8891,7 +8889,6 @@ timer_cb	lv_demos/src/lv_demo_music/lv_demo_music_main.c	/^static void timer_cb(
 timer_cb	lvgl/src/misc/lv_timer.h	/^    lv_timer_cb_t timer_cb; \/**< Timer function*\/$/;"	m	struct:_lv_timer_t
 timer_created	lvgl/src/misc/lv_timer.c	/^static bool timer_created;$/;"	v	file:
 timer_deleted	lvgl/src/misc/lv_timer.c	/^static bool timer_deleted;$/;"	v	file:
-tiny_pcm_config	main.c	/^struct pcm_config  tiny_pcm_config = {$/;"	v	typeref:struct:pcm_config
 tinyalsa	tinyalsa/tests/include/pcm_test_device.h	/^namespace tinyalsa {$/;"	n
 tinyalsa	tinyalsa/tests/src/mixer_test.cc	/^namespace tinyalsa {$/;"	n	file:
 tinyalsa	tinyalsa/tests/src/pcm_in_test.cc	/^namespace tinyalsa {$/;"	n	file:

@@ -28,6 +28,8 @@
 
 #include "rtl_sdr_app_work/include/rtl_sdr_dsp.h"
 
+#define FREQ_TAB_LEN (2400000/600000*128)
+static float freq_tab[FREQ_TAB_LEN*2];
 
 
 static volatile int do_exit = 0;
@@ -148,13 +150,59 @@ static void sighandler(int signum)
 }
 
 
-
-
-
+/*
+m[n] = {[I(n-1)*Q(n) - I(n)Q(n-1)] / [I(n)*I(n) + Q(n)*Q(n)]}
+*/
 void fm_demod(struct demod_state *fm)
 {
 	int i, pcm;
 	int16_t *lp = fm->lowpassed;
+	int in; int qn; int in1; int qn1;
+	int dtemp;
+	int ddtemp;
+	double fm_out;
+	static int fqidx; 
+	int temp;
+	float singg;
+	for(i = 0;i < fm->lp_len; i++){
+		singg = 1;//freq_tab[(fqidx++)%(FREQ_TAB_LEN*2)];
+	    temp = lp[i]*2*singg;//
+		//fprintf(stderr,"fm_data : %d %d %f\n",temp,lp[i],singg);
+		lp[i] = temp;	
+	}	
+	
+	
+	for (i = 0; i < (fm->lp_len-2); i += 2) {
+		in1 = lp[i+0];
+		qn1 = lp[i+1];
+		in = lp[i+2];
+		qn = lp[i+3];		
+		dtemp = in1*qn-in*qn1;
+		ddtemp = (in*in + qn*qn);		
+		if(ddtemp == 0) {
+			ddtemp = 10000;
+		}
+		fm_out = dtemp*1.0/ddtemp;
+		//fprintf(stderr,"fm: %d %d %d %d %f\n",in1,qn1,in,qn,fm_out);
+		fm->result[i/2] = (int16_t)(fm_out*(1<<13));
+	}
+	fm->pre_r = lp[fm->lp_len - 2];
+	fm->pre_j = lp[fm->lp_len - 1];
+	fm->result_len = fm->lp_len/2;
+}
+
+
+
+
+void fm_demod2(struct demod_state *fm)
+{
+	int i, pcm;
+	int16_t *lp = fm->lowpassed;
+	
+//	for(i = 0;i < fm->lp_len; i++){
+//	    lp[i] = lp[i]*1;//*freq_tab[i%FREQ_TAB_LEN];// 
+//	}
+
 	pcm = polar_discriminant(lp[0], lp[1],
 		fm->pre_r, fm->pre_j);
 	fm->result[0] = (int16_t)pcm;
@@ -314,14 +362,25 @@ void full_demod(struct demod_state *d)
 	}
 }
 
+void multiply_f(float ar, float aj, float br, float bj, float *cr, float *cj)
+{
+	*cr = ar*br - aj*bj;
+	*cj = aj*br + ar*bj;
+}
+
+
+
 static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 {
 	int i;
 	struct dongle_state *s = ctx;
 	struct demod_state *d = s->demod_target;
     struct iq_fft_state *f = s->iq_fft_target;
-	uint16_t temp_buffer[MAXIMUM_BUF_LENGTH];
+	int16_t temp_buffer[MAXIMUM_BUF_LENGTH];
+	static int sinf_idx = 0;
+	float temp_ss;
 
+	FILE * fp; 
 	if (do_exit) {
 		return;}
 	if (!ctx) {
@@ -335,8 +394,35 @@ static void rtlsdr_callback(unsigned char *buf, uint32_t len, void *ctx)
 		rotate_90(buf, len);}
 	for (i=0; i<(int)len; i++) {
 		temp_buffer[i] =(int16_t)buf[i] - 127; 
-		s->buf16[i] = temp_buffer[i]; 
+		s->buf16[i] = temp_buffer[i];//*freq_tab[(sinf_idx++)%(FREQ_TAB_LEN*2)];
+		
 	}
+	
+	for(i = 0;i < len/2; i++){
+		float cr,cj;
+		multiply_f(temp_buffer[i*2], temp_buffer[i*2+1], freq_tab[sinf_idx], 
+										freq_tab[sinf_idx+1], &cr, &cj);
+		s->buf16[i*2] = cr;
+		s->buf16[i*2 + 1] = cj;
+		sinf_idx = (sinf_idx + 2)%(FREQ_TAB_LEN*2);
+		
+	}
+	
+	
+//	fp= fopen("if_data.data","w");
+//	for (i=0; i<(int)len; i++){
+//		fprintf(fp,"%d\n",s->buf16[i]);
+//	}
+//	fclose(fp);
+//	
+//	fp= fopen("temp_buf_data.data","w");
+//	for (i=0; i<(int)len; i++){
+//		fprintf(fp,"%d\n",temp_buffer[i]);
+//	}
+//	fclose(fp);
+//	
+//	fprintf(stderr,"write file ok \n");
+	
 	pthread_rwlock_wrlock(&d->rw);
 	memcpy(d->lowpassed, s->buf16, 2*len);
 	d->lp_len = len;
@@ -422,6 +508,8 @@ static void *iq_fft_thread_fn(void *arg)
         for(i = 0; i< update_fft_num; i++){
             //memcpy(data_buff[i],&f->c16buff[i * PR_FFT_LEN*2],FFT_LEN*sizeof(int16_t)*2);
             for(j = 0;j < FFT_LEN;j++){
+                //in[j][0] = data_buff[i][j*2]*freq_tab[j*2%FREQ_TAB_LEN];
+                //in[j][1] = data_buff[i][j*2 + 1]*freq_tab[j*2%FREQ_TAB_LEN + 1];
                 in[j][0] = data_buff[i][j*2];
                 in[j][1] = data_buff[i][j*2 + 1];
             }
@@ -530,6 +618,7 @@ static void optimal_settings(int freq, int rate)
 		dm->output_scale = 1;}
 	d->freq = (uint32_t)capture_freq;
 	d->rate = (uint32_t)capture_rate;
+	fprintf(stderr,"freq : %d  rate:%d\n",capture_freq,capture_rate);
 }
 
 static void *controller_thread_fn(void *arg)
@@ -733,7 +822,7 @@ int main(int argc, char **argv)
 	output_init(&output);
 	controller_init(&controller);
 	iq_fft_init(&iq_fft);
-    	    
+	freq_shift_tab_init(freq_tab,FREQ_TAB_LEN,600000,2400000);
     	    
     	lv_init();
 	hal_init();

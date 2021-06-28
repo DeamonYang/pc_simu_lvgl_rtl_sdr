@@ -29,6 +29,7 @@
 #include "rtl_sdr_app_work/include/rtl_sdr_dsp.h"
 
 #define FREQ_TAB_LEN (2400000/600000*128)
+#define FRER_OFFSET 400
 static float freq_tab[FREQ_TAB_LEN*2];
 
 
@@ -55,7 +56,7 @@ lv_obj_t * img1 ;
 
 static lv_obj_t * chart;
 lv_chart_series_t * ser; 
-
+static void optimal_settings(int freq, int rate);
 
 
 // multiple of these, eventually
@@ -64,6 +65,7 @@ struct demod_state demod;
 struct output_state output;
 struct controller_state controller;
 struct iq_fft_state iq_fft;
+int32_t freq2turn = 0;
 
 static void event_handler(lv_event_t * e)
 {
@@ -75,9 +77,80 @@ static void event_handler(lv_event_t * e)
         LV_LOG_USER("Selected value: %s", buf);
     }
 }
+static lv_obj_t * spinbox_freq;
+
+void update_tun_freq(struct controller_state *s,int32_t freq)
+{
+	s->freqs[0] = freq;
+	s->freq_len = 1;
+	optimal_settings(s->freqs[0], demod.rate_in);
+	fprintf(stderr,"set val: %d ac freq :%d\n",freq,dongle.freq);
+	rtlsdr_set_center_freq(dongle.dev, dongle.freq);
+}
+
+static void lv_spinbox_increment_event_cb(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if(code == LV_EVENT_SHORT_CLICKED || code  == LV_EVENT_LONG_PRESSED_REPEAT) {
+        lv_spinbox_increment(spinbox_freq);
+		freq2turn = lv_spinbox_get_value(spinbox_freq) - FRER_OFFSET;
+		freq2turn = freq2turn*1000;
+		//fprintf(stderr,"key val is: %d re:%d %d\n",freq2turn,freq2turn - FRER_OFFSET,controller.freqs[0]);
+		update_tun_freq(&controller,freq2turn);
+    }
+}
+
+static void lv_spinbox_decrement_event_cb(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    if(code == LV_EVENT_SHORT_CLICKED || code == LV_EVENT_LONG_PRESSED_REPEAT) {
+        lv_spinbox_decrement(spinbox_freq);
+		freq2turn = lv_spinbox_get_value(spinbox_freq) - FRER_OFFSET;
+		freq2turn = freq2turn*1000;
+		//fprintf(stderr,"key val is %d %d\n",freq2turn,controller.freqs[0]);
+		update_tun_freq(&controller,freq2turn);
+    }
+}
+
+void lv_spinbox_freq_init(void)
+{
+	static lv_style_t style_spinbox;
+    lv_style_init(&style_spinbox);
+	
+    spinbox_freq = lv_spinbox_create(lv_scr_act());
+	
+	lv_style_set_pad_all(&style_spinbox, 0);
+	lv_style_set_text_font(&style_spinbox, &lv_font_montserrat_22);
+	lv_obj_add_style(spinbox_freq, &style_spinbox, 0);
+	
+	lv_obj_set_pos (spinbox_freq,  50,20); 
+	lv_obj_set_size(spinbox_freq, 90, 30);
+	lv_spinbox_set_value(spinbox_freq, 91200);
+	lv_spinbox_set_step(spinbox_freq,10);
+    lv_spinbox_set_range(spinbox_freq, 10000, 180000);
+    lv_spinbox_set_digit_format(spinbox_freq, 6, 3);
+    lv_spinbox_step_prev(spinbox_freq); 
+    //lv_obj_set_width(spinbox_freq, 110); 
+	////
+    //lv_obj_set_size(spinbox_freq,110, 30); 	
+    lv_coord_t h = lv_obj_get_height(spinbox_freq);
+	
+    lv_obj_t * btn = lv_btn_create(lv_scr_act());
+    lv_obj_set_size(btn, h, h);
+    lv_obj_align_to(btn, spinbox_freq, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
+    lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_RIGHT, 0);
+    lv_obj_add_event_cb(btn, lv_spinbox_increment_event_cb, LV_EVENT_ALL,  NULL);
+	
+    btn = lv_btn_create(lv_scr_act());
+    lv_obj_set_size(btn, h, h);
+    lv_obj_align_to(btn, spinbox_freq, LV_ALIGN_OUT_LEFT_MID, 0, 0);
+    lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_LEFT, 0);
+    lv_obj_add_event_cb(btn, lv_spinbox_decrement_event_cb, LV_EVENT_ALL, NULL);
+}
 
 void draw_init()
 {
+	static lv_style_t style_chart;
     img1= lv_img_create(lv_scr_act());
     lv_obj_set_pos (img1,  0, 172);
     lv_obj_set_size(img1,480, 100);    
@@ -85,7 +158,14 @@ void draw_init()
     chart = lv_chart_create(lv_scr_act());
     //lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
     lv_obj_set_size(chart, 480, 100);
-    lv_obj_set_pos(chart,0,72);    
+    lv_obj_set_pos(chart,0,72);
+
+	
+    lv_style_init(&style_chart);	
+	lv_style_set_pad_all(&style_chart, 0);
+	lv_obj_add_style(chart, &style_chart, 0);
+
+    
         /*Do not display points on the data*/
     //lv_obj_set_style_size(chart, 0, LV_PART_INDICATOR);
     //lv_obj_set_align(chart,LV_ALIGN_BOTTOM_LEFT);
@@ -96,37 +176,15 @@ void draw_init()
     lv_chart_set_div_line_count(chart, 10, 10);
     ser = lv_chart_add_series(chart, lv_palette_main(LV_PALETTE_LIGHT_BLUE), LV_CHART_AXIS_PRIMARY_Y);
     
-    /*roller*/
-    static lv_style_t style_sel;
-    lv_style_init(&style_sel);
-    lv_style_set_text_font(&style_sel, &lv_font_montserrat_22);
-
-    const char * opts = "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n";
-    const char * opts_po = ".0\n.1\n.2\n.3\n.4\n.5\n.6\n.7\n.8\n.9\n";
-   
-    lv_obj_t *rollerlist[10]; 
-    for(int i = 0;i < 7;i++)
-    {
-        /*A roller on the left with left aligned text, and custom width*/
-        rollerlist[i] = lv_roller_create(lv_scr_act());
-        lv_obj_set_pos (rollerlist[i],  25*i, 0);
-        lv_obj_set_size(rollerlist[i],25, 50);
-        if(i == 4)
-            lv_roller_set_options(rollerlist[i], opts_po, LV_ROLLER_MODE_NORMAL);
-        else
-            lv_roller_set_options(rollerlist[i], opts, LV_ROLLER_MODE_NORMAL);
-        lv_roller_set_visible_row_count(rollerlist[i], 1);
-        lv_obj_add_event_cb(rollerlist[i], event_handler, LV_EVENT_ALL, NULL);
-        lv_roller_set_selected(rollerlist[i], i + 1 , LV_ANIM_OFF);  
-    }
- 
-    lv_obj_t * label2 = lv_label_create(lv_scr_act());
-    lv_obj_set_pos (label2,  25*7, 10);
-    lv_obj_set_size(label2,25*3, 50);
-    //lv_label_set_long_mode(label2, LV_LABEL_LONG_SCROLL_CIRCULAR);     /*Circular scroll*/
-    //lv_obj_set_width(label2, 150);
-    lv_label_set_text(label2, "MHz");
-    //lv_obj_align(label2, LV_ALIGN_CENTER, 0, 40); 
+	lv_spinbox_freq_init();
+	
+    //lv_obj_t * label2 = lv_label_create(lv_scr_act());
+    //lv_obj_set_pos (label2,  25*7, 10);
+    //lv_obj_set_size(label2,25*3, 50);
+    ////lv_label_set_long_mode(label2, LV_LABEL_LONG_SCROLL_CIRCULAR);     /*Circular scroll*/
+    ////lv_obj_set_width(label2, 150);
+    //lv_label_set_text(label2, "MHz");
+    ////lv_obj_align(label2, LV_ALIGN_CENTER, 0, 40); 
     
 }
 
@@ -564,7 +622,7 @@ static void *iq_fft_thread_fn(void *arg)
 			}
 			
 			for(j = 0;j < WATER_FALL_W;j++){
-		 	    ptmap[0][j] = (unsigned int)ecg_sample[j]<<2 |0xFF000000|0x330000;
+		 	    ptmap[0][j] = (unsigned int)ecg_sample[j]<<17 |0xFF000000|0x330000;
 			}
 			
 			fft_waterfall_dsc.data=(uint8_t*)water_fall_map;
@@ -609,7 +667,9 @@ static void optimal_settings(int freq, int rate)
 	capture_freq = freq;
 	capture_rate = dm->downsample * dm->rate_in;
 	if (!d->offset_tuning) {
-		capture_freq = freq + capture_rate/4;}
+		capture_freq = freq + capture_rate/4;
+		fprintf(stderr,"----offset_tuning---\n");
+	}
 	capture_freq += cs->edge * dm->rate_in / 2;
 	dm->output_scale = (1<<15) / (128 * dm->downsample);
 	if (dm->output_scale < 1) {
@@ -663,6 +723,9 @@ static void *controller_thread_fn(void *arg)
 	}
 	return 0;
 }
+
+
+
 
 void frequency_range(struct controller_state *s, char *arg)
 {
@@ -773,6 +836,10 @@ void output_cleanup(struct output_state *s)
 	pthread_mutex_destroy(&s->ready_m);
 }
 
+
+
+
+
 void controller_init(struct controller_state *s)
 {
 	s->freqs[0] = 100000000;
@@ -822,7 +889,7 @@ int main(int argc, char **argv)
 	output_init(&output);
 	controller_init(&controller);
 	iq_fft_init(&iq_fft);
-	freq_shift_tab_init(freq_tab,FREQ_TAB_LEN,600000,2400000);
+	freq_shift_tab_init(freq_tab,FREQ_TAB_LEN,400000,2400000);
     	    
     	lv_init();
 	hal_init();

@@ -13,3 +13,5 @@ bin/
 *.log
 *.swp
 *.bk
+*tags
+*.wav

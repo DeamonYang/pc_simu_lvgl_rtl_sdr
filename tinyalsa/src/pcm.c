@@ -584,6 +584,8 @@ unsigned int pcm_format_to_bits(enum pcm_format format)
  */
 unsigned int pcm_bytes_to_frames(const struct pcm *pcm, unsigned int bytes)
 {
+	//fprintf(stderr,"pcm_bytes_to_frames\n");
+	//fprintf(stderr,"channels format %d \n",pcm->config.channels);
     return bytes / (pcm->config.channels *
         (pcm_format_to_bits(pcm->config.format) >> 3));
 }

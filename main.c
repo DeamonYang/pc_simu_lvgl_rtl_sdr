@@ -27,6 +27,8 @@
 
 
 #include "rtl_sdr_app_work/include/rtl_sdr_dsp.h"
+#include "tinyalsa/include/tinyalsa/asoundlib.h"
+
 
 #define FREQ_TAB_LEN (2400000/600000*128)
 #define FRER_OFFSET 400
@@ -36,6 +38,21 @@ static float freq_tab[FREQ_TAB_LEN*2];
 static volatile int do_exit = 0;
 static int lcm_post[17] = {1,1,1,3,1,5,3,7,1,9,5,11,3,13,7,15,1};
 static int ACTUAL_BUF_LENGTH;
+
+struct pcm *pcm_tiny;
+#define PCM_PERIOD_SIZE 1024
+#define PCM_PERIOD_COUNT 2
+struct pcm_config  tiny_pcm_config = {
+    .channels = 1,
+    .format = PCM_FORMAT_S16_LE,
+    .rate = 48000,
+    .period_size = PCM_PERIOD_SIZE,
+    .period_count = PCM_PERIOD_COUNT,
+    .silence_threshold = PCM_PERIOD_SIZE*PCM_PERIOD_COUNT,
+    .silence_size = 0,
+    .stop_threshold = PCM_PERIOD_SIZE*PCM_PERIOD_COUNT,
+    .start_threshold = PCM_PERIOD_SIZE
+};
 
 
 
@@ -66,6 +83,38 @@ struct output_state output;
 struct controller_state controller;
 struct iq_fft_state iq_fft;
 int32_t freq2turn = 0;
+
+
+
+void pcm_player_init(struct pcm **pcmtt,struct pcm_config *config){
+    *pcmtt = pcm_open(1,0,PCM_OUT,config);
+    if(!pcm_is_ready(*pcmtt)){
+        printf("-----failed to open pcm device------\n");
+        pcm_close(*pcmtt);
+    }else{
+	printf("-----open pcm device success %d------\n",config->channels);
+    }
+}
+
+
+
+void pcm_play_load_buffer(struct pcm *pcm,void * data_buffer,int data_len){
+	unsigned int pcm_len;
+    int write_frames;
+	//fprintf(stderr,"-----pcm_play_load_buffer------\n");
+	pcm_len = pcm_bytes_to_frames(pcm_tiny,data_len);
+	//fprintf(stderr,"pcm_play_load_buffer %d/%d\n",pcm_len,data_len);
+	write_frames = pcm_writei(pcm,data_buffer,pcm_len);
+    if(write_frames < 0){
+        printf("error playing sample");
+    }
+}
+
+
+
+
+
+
 
 static void event_handler(lv_event_t * e)
 {
@@ -125,7 +174,7 @@ void lv_spinbox_freq_init(void)
 	
 	lv_obj_set_pos (spinbox_freq,  50,20); 
 	lv_obj_set_size(spinbox_freq, 90, 30);
-	lv_spinbox_set_value(spinbox_freq, 91200);
+	lv_spinbox_set_value(spinbox_freq, 91600);
 	lv_spinbox_set_step(spinbox_freq,10);
     lv_spinbox_set_range(spinbox_freq, 10000, 180000);
     lv_spinbox_set_digit_format(spinbox_freq, 6, 3);
@@ -211,7 +260,7 @@ static void sighandler(int signum)
 /*
 m[n] = {[I(n-1)*Q(n) - I(n)Q(n-1)] / [I(n)*I(n) + Q(n)*Q(n)]}
 */
-void fm_demod(struct demod_state *fm)
+void fm_demod2(struct demod_state *fm)
 {
 	int i, pcm;
 	int16_t *lp = fm->lowpassed;
@@ -252,7 +301,7 @@ void fm_demod(struct demod_state *fm)
 
 
 
-void fm_demod2(struct demod_state *fm)
+void fm_demod(struct demod_state *fm)
 {
 	int i, pcm;
 	int16_t *lp = fm->lowpassed;
@@ -641,11 +690,14 @@ static void *iq_fft_thread_fn(void *arg)
 static void *output_thread_fn(void *arg)
 {
 	struct output_state *s = arg;
+	static int16_t  result[MAXIMUM_BUF_LENGTH];
 	while (!do_exit) {
 		// use timedwait and pad out under runs
 		safe_cond_wait(&s->ready, &s->ready_m);
 		pthread_rwlock_rdlock(&s->rw);
-		fwrite(s->result, 2, s->result_len, s->file);
+		memcpy(result,s->result,s->result_len*2);
+		pcm_play_load_buffer(pcm_tiny,result,s->result_len*2);
+		//fwrite(s->result, 2, s->result_len, s->file);
 		pthread_rwlock_unlock(&s->rw);
 	}
 	return 0;
@@ -890,8 +942,8 @@ int main(int argc, char **argv)
 	controller_init(&controller);
 	iq_fft_init(&iq_fft);
 	freq_shift_tab_init(freq_tab,FREQ_TAB_LEN,400000,2400000);
-    	    
-    	lv_init();
+    pcm_player_init(&pcm_tiny,&tiny_pcm_config);	    
+    lv_init();
 	hal_init();
     /////load_hex_file("FMcapture1.dat",data_buf,FFT_LEN*FFT_ROUND*2,127);
     draw_init();

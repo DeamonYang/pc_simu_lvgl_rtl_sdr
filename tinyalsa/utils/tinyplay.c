@@ -204,6 +204,7 @@ static int ctx_init(struct ctx* ctx, struct cmd *cmd)
         }
     }
 
+	fprintf(stderr,"---card id %d device id %d flags %d---\n",cmd->card,cmd->device,cmd->flags);
     ctx->pcm = pcm_open(cmd->card,
                         cmd->device,
                         cmd->flags,

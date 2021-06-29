@@ -467,3 +467,138 @@ void usage(void)
 		"\t  -s 22050 | multimon -t raw /dev/stdin\n\n");
 	exit(1);
 }
+
+
+/*
+m[n] = {[I(n-1)*Q(n) - I(n)Q(n-1)] / [I(n)*I(n) + Q(n)*Q(n)]}
+*/
+void fm_demod2(struct demod_state *fm)
+{
+	int i, pcm;
+	int16_t *lp = fm->lowpassed;
+	int in; int qn; int in1; int qn1;
+	int dtemp;
+	int ddtemp;
+	double fm_out;
+	static int fqidx; 
+	int temp;
+	float singg;
+	for(i = 0;i < fm->lp_len; i++){
+		singg = 1;//freq_tab[(fqidx++)%(FREQ_TAB_LEN*2)];
+	    temp = lp[i]*2*singg;//
+		//fprintf(stderr,"fm_data : %d %d %f\n",temp,lp[i],singg);
+		lp[i] = temp;	
+	}	
+	
+	
+	for (i = 0; i < (fm->lp_len-2); i += 2) {
+		in1 = lp[i+0];
+		qn1 = lp[i+1];
+		in = lp[i+2];
+		qn = lp[i+3];		
+		dtemp = in1*qn-in*qn1;
+		ddtemp = (in*in + qn*qn);		
+		if(ddtemp == 0) {
+			ddtemp = 10000;
+		}
+		fm_out = dtemp*1.0/ddtemp;
+		//fprintf(stderr,"fm: %d %d %d %d %f\n",in1,qn1,in,qn,fm_out);
+		fm->result[i/2] = (int16_t)(fm_out*(1<<13));
+	}
+	fm->pre_r = lp[fm->lp_len - 2];
+	fm->pre_j = lp[fm->lp_len - 1];
+	fm->result_len = fm->lp_len/2;
+}
+
+
+
+
+void fm_demod(struct demod_state *fm)
+{
+	int i, pcm;
+	int16_t *lp = fm->lowpassed;
+	
+//	for(i = 0;i < fm->lp_len; i++){
+//	    lp[i] = lp[i]*1;//*freq_tab[i%FREQ_TAB_LEN];// 
+//	}
+
+	pcm = polar_discriminant(lp[0], lp[1],
+		fm->pre_r, fm->pre_j);
+	fm->result[0] = (int16_t)pcm;
+	for (i = 2; i < (fm->lp_len-1); i += 2) {
+		switch (fm->custom_atan) {
+		case 0:
+			pcm = polar_discriminant(lp[i], lp[i+1],
+				lp[i-2], lp[i-1]);
+			break;
+		case 1:
+			pcm = polar_disc_fast(lp[i], lp[i+1],
+				lp[i-2], lp[i-1]);
+			break;
+		case 2:
+			pcm = polar_disc_lut(lp[i], lp[i+1],
+				lp[i-2], lp[i-1]);
+			break;
+		}
+		fm->result[i/2] = (int16_t)pcm;
+	}
+	fm->pre_r = lp[fm->lp_len - 2];
+	fm->pre_j = lp[fm->lp_len - 1];
+	fm->result_len = fm->lp_len/2;
+}
+
+void am_demod(struct demod_state *fm)
+// todo, fix this extreme laziness
+{
+	int i, pcm;
+	int16_t *lp = fm->lowpassed;
+	int16_t *r  = fm->result;
+	for (i = 0; i < fm->lp_len; i += 2) {
+		// hypot uses floats but won't overflow
+		//r[i/2] = (int16_t)hypot(lp[i], lp[i+1]);
+		pcm = lp[i] * lp[i];
+		pcm += lp[i+1] * lp[i+1];
+		r[i/2] = (int16_t)sqrt(pcm) * fm->output_scale;
+	}
+	fm->result_len = fm->lp_len/2;
+	// lowpass? (3khz)  highpass?  (dc)
+}
+
+void usb_demod(struct demod_state *fm)
+{
+	int i, pcm;
+	int16_t *lp = fm->lowpassed;
+	int16_t *r  = fm->result;
+	for (i = 0; i < fm->lp_len; i += 2) {
+		pcm = lp[i] + lp[i+1];
+		r[i/2] = (int16_t)pcm * fm->output_scale;
+	}
+	fm->result_len = fm->lp_len/2;
+}
+
+void lsb_demod(struct demod_state *fm)
+{
+	int i, pcm;
+	int16_t *lp = fm->lowpassed;
+	int16_t *r  = fm->result;
+	for (i = 0; i < fm->lp_len; i += 2) {
+		pcm = lp[i] - lp[i+1];
+		r[i/2] = (int16_t)pcm * fm->output_scale;
+	}
+	fm->result_len = fm->lp_len/2;
+}
+
+
+
+
+
+void raw_demod(struct demod_state *fm)
+{
+	int i;
+	for (i = 0; i < fm->lp_len; i++) {
+		fm->result[i] = (int16_t)fm->lowpassed[i];
+	}
+	fm->result_len = fm->lp_len;
+}
+
+

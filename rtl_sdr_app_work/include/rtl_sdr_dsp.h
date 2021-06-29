@@ -144,6 +144,11 @@ void arbitrary_downsample(int16_t *buf1, int16_t *buf2, int len1, int len2);
 void arbitrary_resample(int16_t *buf1, int16_t *buf2, int len1, int len2);
 void usage(void);
 
+void fm_demod(struct demod_state *fm) ;
+void am_demod(struct demod_state *fm) ;
+void usb_demod(struct demod_state *fm);
+void lsb_demod(struct demod_state *fm);
+void raw_demod(struct demod_state *fm);
 
 
 #endif

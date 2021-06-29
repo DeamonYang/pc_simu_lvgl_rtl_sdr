@@ -41,7 +41,7 @@ static int ACTUAL_BUF_LENGTH;
 
 struct pcm *pcm_tiny;
 #define PCM_PERIOD_SIZE 1024
-#define PCM_PERIOD_COUNT 2
+#define PCM_PERIOD_COUNT 4
 struct pcm_config  tiny_pcm_config = {
     .channels = 1,
     .format = PCM_FORMAT_S16_LE,
@@ -51,7 +51,7 @@ struct pcm_config  tiny_pcm_config = {
     .silence_threshold = PCM_PERIOD_SIZE*PCM_PERIOD_COUNT,
     .silence_size = 0,
     .stop_threshold = PCM_PERIOD_SIZE*PCM_PERIOD_COUNT,
-    .start_threshold = PCM_PERIOD_SIZE
+    .start_threshold = PCM_PERIOD_SIZE*2
 };
 
 
@@ -111,11 +111,7 @@ void pcm_play_load_buffer(struct pcm *pcm,void * data_buffer,int data_len){
 }
 
 
-
-
-
-
-
+/******************************GUI******************************/
 static void event_handler(lv_event_t * e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -173,8 +169,8 @@ void lv_spinbox_freq_init(void)
 	lv_obj_add_style(spinbox_freq, &style_spinbox, 0);
 	
 	lv_obj_set_pos (spinbox_freq,  50,20); 
-	lv_obj_set_size(spinbox_freq, 90, 30);
-	lv_spinbox_set_value(spinbox_freq, 91600);
+	lv_obj_set_size(spinbox_freq, 95, 30);
+	lv_spinbox_set_value(spinbox_freq, 91000);
 	lv_spinbox_set_step(spinbox_freq,10);
     lv_spinbox_set_range(spinbox_freq, 10000, 180000);
     lv_spinbox_set_digit_format(spinbox_freq, 6, 3);
@@ -196,6 +192,95 @@ void lv_spinbox_freq_init(void)
     lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_LEFT, 0);
     lv_obj_add_event_cb(btn, lv_spinbox_decrement_event_cb, LV_EVENT_ALL, NULL);
 }
+
+//dropdown list
+
+static void demod_type_event_handler(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * obj = lv_event_get_target(e);
+    if(code == LV_EVENT_VALUE_CHANGED) {
+        char buf[32];
+        lv_dropdown_get_selected_str(obj, buf, sizeof(buf));
+		switch(buf[0]){
+			case'F':{
+				demod.mode_demod = &fm_demod;			
+			};break;
+			
+			case'A':{
+				demod.mode_demod = &am_demod;			
+			};break;
+			case'L':{
+				demod.mode_demod = &lsb_demod;			
+			};break;
+			
+			case'U':{
+				demod.mode_demod = &usb_demod;			
+			};break;
+			
+			case'R':{
+				demod.mode_demod = &raw_demod;			
+			};break;
+			case'W':{
+				demod.mode_demod = &fm_demod;			
+			};break;	
+			default:{
+				demod.mode_demod = &fm_demod;			
+			}
+		}
+		LV_LOG_USER("Option: %s", buf);
+    }
+}
+
+void lv_demod_type_dropdown_init(void)
+{
+
+    static lv_style_t style_demod_type;
+    lv_style_init(&style_demod_type);
+    lv_style_set_pad_all(&style_demod_type, 2);
+    lv_style_set_text_font(&style_demod_type, &lv_font_montserrat_20);
+    /*Create a normal drop down list*/
+    lv_obj_t * dd = lv_dropdown_create(lv_scr_act());
+    lv_obj_set_pos (dd,200  , 20);
+    lv_obj_set_size(dd,60, 30);
+    lv_obj_add_style(dd, &style_demod_type, 0);
+
+    lv_dropdown_set_options(dd, "FM\n"
+                                "AM\n"
+                                "LSB\n"
+                                "USB\n"
+                                "RAW\n"
+                                "WBFM");
+    //lv_obj_align(dd, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_add_event_cb(dd, demod_type_event_handler, LV_EVENT_ALL, NULL);
+}
+
+
+void top_bar_init(){
+	
+	lv_obj_t * label_bat = lv_label_create(lv_scr_act());
+    lv_obj_set_pos (label_bat,  460, 0);
+	lv_obj_set_size(label_bat,30, 20);
+	lv_label_set_text(label_bat, LV_SYMBOL_BATTERY_3);
+	
+	lv_obj_t * label_usb = lv_label_create(lv_scr_act());
+    lv_obj_set_pos (label_usb,  440, 0);
+	lv_obj_set_size(label_usb,30, 20);
+	lv_label_set_text(label_usb, LV_SYMBOL_USB);
+	
+	lv_obj_t * label_volume = lv_label_create(lv_scr_act());
+    lv_obj_set_pos (label_volume,  420, 0);
+	lv_obj_set_size(label_volume,30, 20);
+	lv_label_set_text(label_volume, LV_SYMBOL_VOLUME_MAX);
+	
+    //lv_obj_set_size(label2,25*3, 20);
+    //lv_label_set_long_mode(label2, LV_LABEL_LONG_SCROLL_CIRCULAR);     /*Circular scroll*/
+    //lv_obj_set_width(label2, 150);
+    //lv_label_set_text(label2, "MHz");
+    //lv_obj_align(label2, LV_ALIGN_CENTER, 0, 40); 
+	
+}
+
 
 void draw_init()
 {
@@ -226,7 +311,8 @@ void draw_init()
     ser = lv_chart_add_series(chart, lv_palette_main(LV_PALETTE_LIGHT_BLUE), LV_CHART_AXIS_PRIMARY_Y);
     
 	lv_spinbox_freq_init();
-	
+	lv_demod_type_dropdown_init();	
+	top_bar_init();
     //lv_obj_t * label2 = lv_label_create(lv_scr_act());
     //lv_obj_set_pos (label2,  25*7, 10);
     //lv_obj_set_size(label2,25*3, 50);
@@ -257,133 +343,7 @@ static void sighandler(int signum)
 }
 
 
-/*
-m[n] = {[I(n-1)*Q(n) - I(n)Q(n-1)] / [I(n)*I(n) + Q(n)*Q(n)]}
-*/
-void fm_demod2(struct demod_state *fm)
-{
-	int i, pcm;
-	int16_t *lp = fm->lowpassed;
-	int in; int qn; int in1; int qn1;
-	int dtemp;
-	int ddtemp;
-	double fm_out;
-	static int fqidx; 
-	int temp;
-	float singg;
-	for(i = 0;i < fm->lp_len; i++){
-		singg = 1;//freq_tab[(fqidx++)%(FREQ_TAB_LEN*2)];
-	    temp = lp[i]*2*singg;//
-		//fprintf(stderr,"fm_data : %d %d %f\n",temp,lp[i],singg);
-		lp[i] = temp;	
-	}	
-	
-	
-	for (i = 0; i < (fm->lp_len-2); i += 2) {
-		in1 = lp[i+0];
-		qn1 = lp[i+1];
-		in = lp[i+2];
-		qn = lp[i+3];		
-		dtemp = in1*qn-in*qn1;
-		ddtemp = (in*in + qn*qn);		
-		if(ddtemp == 0) {
-			ddtemp = 10000;
-		}
-		fm_out = dtemp*1.0/ddtemp;
-		//fprintf(stderr,"fm: %d %d %d %d %f\n",in1,qn1,in,qn,fm_out);
-		fm->result[i/2] = (int16_t)(fm_out*(1<<13));
-	}
-	fm->pre_r = lp[fm->lp_len - 2];
-	fm->pre_j = lp[fm->lp_len - 1];
-	fm->result_len = fm->lp_len/2;
-}
 
-
-
-
-void fm_demod(struct demod_state *fm)
-{
-	int i, pcm;
-	int16_t *lp = fm->lowpassed;
-	
-//	for(i = 0;i < fm->lp_len; i++){
-//	    lp[i] = lp[i]*1;//*freq_tab[i%FREQ_TAB_LEN];// 
-//	}
-
-	pcm = polar_discriminant(lp[0], lp[1],
-		fm->pre_r, fm->pre_j);
-	fm->result[0] = (int16_t)pcm;
-	for (i = 2; i < (fm->lp_len-1); i += 2) {
-		switch (fm->custom_atan) {
-		case 0:
-			pcm = polar_discriminant(lp[i], lp[i+1],
-				lp[i-2], lp[i-1]);
-			break;
-		case 1:
-			pcm = polar_disc_fast(lp[i], lp[i+1],
-				lp[i-2], lp[i-1]);
-			break;
-		case 2:
-			pcm = polar_disc_lut(lp[i], lp[i+1],
-				lp[i-2], lp[i-1]);
-			break;
-		}
-		fm->result[i/2] = (int16_t)pcm;
-	}
-	fm->pre_r = lp[fm->lp_len - 2];
-	fm->pre_j = lp[fm->lp_len - 1];
-	fm->result_len = fm->lp_len/2;
-}
-
-void am_demod(struct demod_state *fm)
-// todo, fix this extreme laziness
-{
-	int i, pcm;
-	int16_t *lp = fm->lowpassed;
-	int16_t *r  = fm->result;
-	for (i = 0; i < fm->lp_len; i += 2) {
-		// hypot uses floats but won't overflow
-		//r[i/2] = (int16_t)hypot(lp[i], lp[i+1]);
-		pcm = lp[i] * lp[i];
-		pcm += lp[i+1] * lp[i+1];
-		r[i/2] = (int16_t)sqrt(pcm) * fm->output_scale;
-	}
-	fm->result_len = fm->lp_len/2;
-	// lowpass? (3khz)  highpass?  (dc)
-}
-
-void usb_demod(struct demod_state *fm)
-{
-	int i, pcm;
-	int16_t *lp = fm->lowpassed;
-	int16_t *r  = fm->result;
-	for (i = 0; i < fm->lp_len; i += 2) {
-		pcm = lp[i] + lp[i+1];
-		r[i/2] = (int16_t)pcm * fm->output_scale;
-	}
-	fm->result_len = fm->lp_len/2;
-}
-
-void lsb_demod(struct demod_state *fm)
-{
-	int i, pcm;
-	int16_t *lp = fm->lowpassed;
-	int16_t *r  = fm->result;
-	for (i = 0; i < fm->lp_len; i += 2) {
-		pcm = lp[i] - lp[i+1];
-		r[i/2] = (int16_t)pcm * fm->output_scale;
-	}
-	fm->result_len = fm->lp_len/2;
-}
-
-void raw_demod(struct demod_state *fm)
-{
-	int i;
-	for (i = 0; i < fm->lp_len; i++) {
-		fm->result[i] = (int16_t)fm->lowpassed[i];
-	}
-	fm->result_len = fm->lp_len;
-}
 
 void deemph_filter(struct demod_state *fm)
 {
@@ -695,8 +655,8 @@ static void *output_thread_fn(void *arg)
 		// use timedwait and pad out under runs
 		safe_cond_wait(&s->ready, &s->ready_m);
 		pthread_rwlock_rdlock(&s->rw);
-		memcpy(result,s->result,s->result_len*2);
-		pcm_play_load_buffer(pcm_tiny,result,s->result_len*2);
+		//memcpy(result,s->result,s->result_len*2);
+		pcm_play_load_buffer(pcm_tiny,s->result,s->result_len*2);
 		//fwrite(s->result, 2, s->result_len, s->file);
 		pthread_rwlock_unlock(&s->rw);
 	}
